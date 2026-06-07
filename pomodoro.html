@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>番茄时钟</title>
+<!--
+  ╔══════════════════════════════════════════════════════════╗
+  ║          Pomodoro Timer — 番茄时钟（纯前端单文件）      ║
+  ╠══════════════════════════════════════════════════════════╣
+  ║  架构概览：                                             ║
+  ║  1. HTML — 页面骨架（计时器环 + 按钮 + 任务 + 统计）    ║
+  ║  2. CSS  — 暗色主题 + 环形进度 + 动画 + 响应式布局      ║
+  ║  3. JS   — 计时引擎 + 状态机 + 任务管理 + 统计 + 通知   ║
+  ║                                                         ║
+  ║  数据流：localStorage ←→ JS State ←→ DOM 渲染           ║
+  ║  计时精度：基于 Date.now() 差值，不依赖 setInterval 计数 ║
+  ╚══════════════════════════════════════════════════════════╝
+-->
+<style>
+  :root {
+    --bg: #1e1b2e;
+    --surface: #26233a;
+    --surface2: #302b45;
+    --text: #f0e9dc;
+    --text-dim: #988e9c;
+    --accent: #f7768e;
+    --accent-strong: #ff5c77;
+    --accent-glow: rgba(247,118,142,0.35);
+    --green: #9ece6a;
+    --green-glow: rgba(158,206,106,0.35);
+    --blue: #7dcfff;
+    --blue-glow: rgba(125,207,255,0.3);
+    --radius: 16px;
+    --transition: 0.25s ease;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: radial-gradient(ellipse at 50% 0%, #2a2540 0%, var(--bg) 70%);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* 应用容器 */
+  .app {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* 标题 — 渐变文字效果（粉→蓝） */
+  .header {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--accent-strong), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ==========================================
+     计时器环形进度条区域
+     ========================================== */
+  .timer-section {
+    display: flex;
+    justify-content: center;
+    position: relative;
+  }
+
+  .timer-ring-wrap {
+    position: relative;
+    width: 260px;
+    height: 260px;
+  }
+  /* SVG 旋转 -90°，让进度起点从 12 点钟方向开始 */
+  .timer-ring-wrap svg {
+    transform: rotate(-90deg);
+    width: 260px;
+    height: 260px;
+  }
+  /* 环形背景轨道（暗色底环） */
+  .ring-bg {
+    fill: none;
+    stroke: #332e4a;
+    stroke-width: 8;
+  }
+  /* 环形进度条（前景弧）— stroke-dashoffset 控制剩余进度 */
+  .ring-progress {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.9s linear, stroke 0.4s;
+  }
+  .ring-progress.break       { stroke: var(--green); }    /* 短休息绿色 */
+  .ring-progress.long-break  { stroke: var(--blue);  }    /* 长休息蓝色 */
+  /* 时间数字 + 标签层 — 绝对定位盖在 SVG 上方居中 */
+  .timer-display {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 倒计时数字 — 等宽字体 + 微弱光晕 */
+  .time-text {
+    font-size: 3.8rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    letter-spacing: 2px;
+    line-height: 1;
+    color: #f2ece0;
+    text-shadow: 0 0 40px rgba(247,118,142,0.15);
+  }
+  /* 模式文字 — 专注=粉红, 休息=绿, 长休息=蓝 */
+  .mode-label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-top: 6px;
+    color: var(--accent);
+    font-weight: 600;
+    transition: color 0.4s;
+  }
+  .mode-label.break       { color: var(--green); }
+  .mode-label.long-break  { color: var(--blue);  }
+  /* 轮次指示器（如 "2 / 4"），仅专注模式显示 */
+  .round-indicator {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+    letter-spacing: 1px;
+  }
+
+  /* ==========================================
+     控制按钮
+     ========================================== */
+  .controls {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+  }
+  .btn {
+    padding: 10px 28px;
+    border: none;
+    border-radius: 25px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    letter-spacing: 1px;
+  }
+  /* 主按钮 — 粉红渐变 + 外发光 */
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent-strong), #ff4088);
+    color: #fff;
+    box-shadow: 0 4px 18px var(--accent-glow);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 24px var(--accent-glow); }
+  /* 运行中 — 切换为金色 */
+  .btn-primary.running {
+    background: linear-gradient(135deg, #e0af3b, #f0c84d);
+    color: #1e1b2e;
+    box-shadow: 0 4px 18px rgba(240,200,77,0.35);
+  }
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+  }
+  .btn-secondary:hover { background: #3d3758; }
+
+  /* ==========================================
+     通用卡片（任务 & 统计共用）
+     ========================================== */
+  .section {
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--blue);
+    margin-bottom: 12px;
+  }
+
+  /* ==========================================
+     任务列表
+     ========================================== */
+  .task-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: var(--transition);
+  }
+  .task-item:hover { background: rgba(255,255,255,0.03); border-radius: 6px; }
+  .task-item:last-of-type { border-bottom: none; }
+  /* 圆形复选框 — 空心→实心(完成) / 发光(选中) */
+  .task-checkbox {
+    width: 20px; height: 20px;
+    border: 2px solid var(--text-dim);
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    font-size: 12px;
+  }
+  .task-item.done .task-checkbox {
+    border-color: var(--green);
+    background: var(--green);
+    color: var(--bg);
+  }
+  .task-item.active .task-checkbox {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+  .task-title { flex: 1; font-size: 0.9rem; }
+  .task-item.done .task-title {
+    text-decoration: line-through;
+    color: var(--text-dim);
+  }
+  /* 番茄计数徽章 */
+  .task-pomos {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+  .task-item.active .task-pomos { color: var(--accent); }
+  /* 删除按钮 — 默认隐藏，hover 出现 */
+  .task-delete {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 2px 6px;
+    opacity: 0;
+    transition: var(--transition);
+  }
+  .task-item:hover .task-delete { opacity: 1; }
+  .task-delete:hover { color: var(--accent); }
+  /* 添加任务输入区域 */
+  .add-task {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .add-task input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--surface2);
+    border-radius: 20px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.85rem;
+    outline: none;
+    transition: var(--transition);
+  }
+  .add-task input:focus { border-color: var(--accent); }
+  .add-task button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 20px;
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: var(--transition);
+  }
+  .add-task button:hover { background: var(--accent-strong); }
+
+  /* ==========================================
+     统计图表 — 7 天柱状图
+     ========================================== */
+  .stats-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    height: 100px;
+    padding: 4px 0;
+  }
+  .bar-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+  /* 柱子 — 粉色渐变，今天用绿色 */
+  .bar {
+    width: 100%;
+    max-width: 36px;
+    background: linear-gradient(180deg, var(--accent), #ff4088);
+    border-radius: 6px 6px 0 0;
+    min-height: 4px;
+    transition: height 0.5s ease;
+  }
+  .bar.today { background: linear-gradient(180deg, var(--green), #7ec04e); }
+  .bar-label { font-size: 0.65rem; color: var(--text-dim); }
+  .bar-count { font-size: 0.7rem; color: var(--text); font-weight: 600; }
+  /* 底部汇总 */
+  .stats-summary {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .stat-item { text-align: center; }
+  /* 数字使用渐变色 */
+  .stat-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-strong), var(--blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-label {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* ==========================================
+     模式切换标签 — iOS 风格分段控制器
+     ========================================== */
+  .mode-tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--surface);
+    border-radius: 25px;
+    padding: 4px;
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 21px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: var(--transition);
+    letter-spacing: 1px;
+  }
+  /* 选中标签 — 粉红渐变高亮 */
+  .mode-tab.active {
+    background: linear-gradient(135deg, var(--accent-strong), #ff4088);
+    color: #fff;
+    box-shadow: 0 2px 12px var(--accent-glow);
+  }
+
+  /* ==========================================
+     动画定义
+     ========================================== */
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .pulsing { animation: pulse 1.2s ease-in-out infinite; }
+
+  /* ── 倒计时最后 10 秒警告动画 ── */
+  @keyframes urgentPulse {
+    0%,100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+  }
+  @keyframes urgentGlow {
+    0%,100% { filter: drop-shadow(0 0 8px rgba(255,64,96,0.5)); }
+    50% { filter: drop-shadow(0 0 20px rgba(255,64,96,0.8)); }
+  }
+  /* urgent 状态 → 数字变红 + 脉冲跳动 */
+  .timer-ring-wrap.urgent .time-text {
+    animation: urgentPulse 0.5s ease-in-out infinite;
+    color: #ff4060;
+    text-shadow: 0 0 30px rgba(255,64,96,0.5), 0 0 60px rgba(255,64,96,0.25);
+  }
+  .timer-ring-wrap.urgent .ring-progress {
+    stroke: #ff4060;
+    animation: urgentGlow 0.5s ease-in-out infinite;
+  }
+  .timer-ring-wrap.urgent .mode-label { color: #ff4060; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- 应用标题 — 渐变色文字 -->
+  <div class="header">番茄时钟</div>
+
+  <!-- 计时器环形进度区域 -->
+  <div class="timer-section">
+    <div class="timer-ring-wrap">
+      <svg viewBox="0 0 260 260">
+        <circle class="ring-bg" cx="130" cy="130" r="120"/>
+        <circle class="ring-progress" id="ringProgress" cx="130" cy="130" r="120"
+          stroke-dasharray="753.98" stroke-dashoffset="0"/>
+      </svg>
+      <div class="timer-display">
+        <div class="time-text" id="timeDisplay">25:00</div>
+        <div class="mode-label" id="modeLabel">专注</div>
+        <div class="round-indicator" id="roundIndicator"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 控制按钮行 -->
+  <div class="controls">
+    <button class="btn btn-secondary" id="btnReset" title="重置">重置</button>
+    <button class="btn btn-primary" id="btnStart">开始</button>
+  </div>
+
+  <!-- 模式切换标签 -->
+  <div class="mode-tabs" id="modeTabs">
+    <button class="mode-tab active" data-mode="focus">专注 25分</button>
+    <button class="mode-tab" data-mode="shortBreak">短休 5分</button>
+    <button class="mode-tab" data-mode="longBreak">长休 15分</button>
+  </div>
+
+  <!-- 任务列表区域 -->
+  <div class="section">
+    <div class="section-title">任务列表</div>
+    <div id="taskList"></div>
+    <div class="add-task">
+      <input type="text" id="taskInput" placeholder="添加新任务..." maxlength="120">
+      <button id="btnAddTask">+</button>
+    </div>
+  </div>
+
+  <!-- 统计图表区域 -->
+  <div class="section">
+    <div class="section-title">本周统计</div>
+    <div class="stats-chart" id="statsChart"></div>
+    <div class="stats-summary">
+      <div class="stat-item">
+        <div class="stat-value" id="statToday">0</div>
+        <div class="stat-label">今日</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="statWeek">0</div>
+        <div class="stat-label">本周</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">总计</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 1. StorageService — localStorage 封装，键名加 'pomo_' 前缀
+const Storage = {
+  get: function(key, fallback) {
+    try {
+      var v = localStorage.getItem('pomo_' + key);
+      return v ? JSON.parse(v) : fallback;
+    } catch(e) { return fallback; }
+  },
+  set: function(key, val) {
+    try { localStorage.setItem('pomo_' + key, JSON.stringify(val)); } catch(e) {}
+  }
+};
+
+// 2. App State — 全局配置 + 运行时单一数据源
+var SETTINGS = Storage.get('settings', {
+  focusMinutes: 25, shortBreakMinutes: 5,
+  longBreakMinutes: 15, longBreakInterval: 4
+});
+var MODES = {
+  focus:      { label: '专注',   minutes: SETTINGS.focusMinutes,      cls: '' },
+  shortBreak: { label: '短休息', minutes: SETTINGS.shortBreakMinutes,  cls: 'break' },
+  longBreak:  { label: '长休息', minutes: SETTINGS.longBreakMinutes,   cls: 'long-break' }
+};
+var state = {
+  mode: 'focus',
+  remainingSeconds: MODES.focus.minutes * 60,
+  running: false,
+  completedPomos: Storage.get('completedPomos', 0),
+  activeTaskId: Storage.get('activeTaskId', null),
+  startedAt: null,
+  elapsedBeforePause: 0
+};
+var tasks = Storage.get('tasks', []);
+var pomodoroRecords = Storage.get('pomodoroRecords', []);
+var RING_CIRCUMFERENCE = 2 * Math.PI * 120;
+
+function totalSeconds() { return MODES[state.mode].minutes * 60; }
+
+function findRecord(dateStr) {
+  for (var i = 0; i < pomodoroRecords.length; i++) {
+    if (pomodoroRecords[i].date === dateStr) return pomodoroRecords[i];
+  }
+  return null;
+}
+
+function findTask(id) {
+  for (var i = 0; i < tasks.length; i++) {
+    if (tasks[i].id === id) return tasks[i];
+  }
+  return null;
+} // SVG 圆周长 ≈ 753.98
+
+// 3. DOM Refs — 一次性缓存所有 DOM 查询（$ 开头 = DOM 元素）
+var $timeDisplay    = document.getElementById('timeDisplay');
+var $modeLabel      = document.getElementById('modeLabel');
+var $roundIndicator = document.getElementById('roundIndicator');
+var $btnStart       = document.getElementById('btnStart');
+var $btnReset       = document.getElementById('btnReset');
+var $ringProgress   = document.getElementById('ringProgress');
+var $ringWrap       = document.querySelector('.timer-ring-wrap');
+var $taskList       = document.getElementById('taskList');
+var $taskInput      = document.getElementById('taskInput');
+var $btnAddTask     = document.getElementById('btnAddTask');
+var $statsChart     = document.getElementById('statsChart');
+var $statToday      = document.getElementById('statToday');
+var $statWeek       = document.getElementById('statWeek');
+var $statTotal      = document.getElementById('statTotal');
+var $modeTabs       = document.getElementById('modeTabs');
+
+// 4. Audio Service — Web Audio API 合成提示音（无需音频文件）
+var audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playBeep(freq, duration, type) {
+  type = type || 'sine';
+  try {
+    var ctx = getAudioCtx();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch(e) {}
+}
+// 计时结束三连升调 (880→1100→1320 Hz)
+function playFinishSound() {
+  playBeep(880, 0.15);
+  setTimeout(function() { playBeep(1100, 0.2); }, 150);
+  setTimeout(function() { playBeep(1320, 0.3); }, 350);
+}
+
+// 5. Notification Service — 浏览器桌面通知
+function notify(title, body) {
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body: body });
+  }
+}
+function requestNotification() {
+  if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+// 6. Timer Engine — 精确倒计时（Date.now() 差值法，不受浏览器节流影响）
+var timerInterval = null;
+
+function startTimer() {
+  state.running = true;
+  state.startedAt = Date.now();
+  state.elapsedBeforePause = totalSeconds() - state.remainingSeconds;
+  $btnStart.textContent = '暂停';
+  $btnStart.classList.add('running');
+  $ringProgress.style.transition = 'stroke-dashoffset 0.9s linear, stroke 0.4s';
+  updateRoundIndicator();
+  tick();
+  timerInterval = setInterval(tick, 200);
+}
+
+function pauseTimer() {
+  state.running = false;
+  state.elapsedBeforePause = totalSeconds() - state.remainingSeconds;
+  state.startedAt = null;
+  $btnStart.textContent = '开始';
+  $btnStart.classList.remove('running');
+  $ringWrap.classList.remove('urgent');
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+// 每 200ms 执行 — 用时间戳差值计算真实已过秒数
+function tick() {
+  var elapsed = state.elapsedBeforePause + (Date.now() - state.startedAt) / 1000;
+  state.remainingSeconds = Math.max(0, totalSeconds() - Math.round(elapsed));
+  updateDisplay();
+  if (state.remainingSeconds <= 0) { onTimerEnd(); }
+}
+
+// 计时结束处理
+function onTimerEnd() {
+  pauseTimer();
+  playFinishSound();
+
+  if (state.mode === 'focus') {
+    state.completedPomos++;
+    Storage.set('completedPomos', state.completedPomos);
+
+    var today = new Date().toISOString().split('T')[0];
+    var rec = findRecord(today);
+    if (rec) rec.count++;
+    else pomodoroRecords.push({ date: today, count: 1 });
+    Storage.set('pomodoroRecords', pomodoroRecords);
+
+    if (state.activeTaskId) {
+      var task = findTask(state.activeTaskId);
+      if (task) task.pomodorosDone++;
+      Storage.set('tasks', tasks);
+    }
+
+    var round = (state.completedPomos - 1) % SETTINGS.longBreakInterval + 1;
+    if (state.completedPomos % SETTINGS.longBreakInterval === 0) {
+      switchMode('longBreak');
+      notify('番茄完成！', '已完成 ' + round + ' 个番茄钟，该好好休息一下了~');
+    } else {
+      switchMode('shortBreak');
+      notify('番茄完成！', '休息一下吧，5分钟后继续~');
+    }
+  } else {
+    switchMode('focus');
+    notify('休息结束！', '开始专注吧！');
+  }
+
+  renderTasks();
+  renderStats();
+}
+
+// 7. State Machine — focus → shortBreak → focus → longBreak → focus
+function switchMode(mode) {
+  state.mode = mode;
+  state.remainingSeconds = totalSeconds();
+  state.elapsedBeforePause = 0;
+  state.startedAt = null;
+  updateDisplay();
+  updateRingInstant();
+  updateModeTabs();
+}
+
+function updateRoundIndicator() {
+  if (state.mode !== 'focus') { $roundIndicator.textContent = ''; return; }
+  var seq = (state.completedPomos % SETTINGS.longBreakInterval) + 1;
+  $roundIndicator.textContent = seq + ' / ' + SETTINGS.longBreakInterval;
+}
+
+// 8. Task Manager — 任务 CRUD + XSS 防护
+function addTask(title) {
+  var task = {
+    id: Date.now(),
+    title: title.trim(),
+    completed: false,
+    pomodorosDone: 0,
+    pomodorosTarget: 1,
+    createdAt: new Date().toISOString()
+  };
+  tasks.unshift(task);
+  Storage.set('tasks', tasks);
+  renderTasks();
+}
+
+function toggleTaskDone(id) {
+  var task = findTask(id);
+  if (task) task.completed = !task.completed;
+  Storage.set('tasks', tasks);
+  renderTasks();
+}
+
+function deleteTask(id) {
+  tasks = tasks.filter(function(t) { return t.id !== id; });
+  if (state.activeTaskId === id) { state.activeTaskId = null; Storage.set('activeTaskId', null); }
+  Storage.set('tasks', tasks);
+  renderTasks();
+}
+
+function setActiveTask(id) {
+  var task = findTask(id);
+  if (!task || task.completed) return;
+  state.activeTaskId = (state.activeTaskId === id) ? null : id;
+  Storage.set('activeTaskId', state.activeTaskId);
+  renderTasks();
+}
+
+// XSS 防护 — 转义 HTML 特殊字符
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// 渲染任务列表（使用 innerHTML + 事件委托）
+function renderTasks() {
+  if (tasks.length === 0) {
+    $taskList.innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;padding:8px 0;text-align:center;">还没有任务，添加一个吧</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < tasks.length; i++) {
+    var t = tasks[i];
+    html += '<div class="task-item' + (t.completed ? ' done' : '') + (state.activeTaskId === t.id ? ' active' : '') + '" data-id="' + t.id + '">';
+    html += '<div class="task-checkbox task-done-btn">' + (t.completed ? '✓' : '') + '</div>';
+    html += '<div class="task-title">' + esc(t.title) + '</div>';
+    if (!t.completed) html += '<div class="task-pomos">' + t.pomodorosDone + ' / ' + t.pomodorosTarget + ' 🍅</div>';
+    html += '<button class="task-delete">×</button></div>';
+  }
+  $taskList.innerHTML = html;
+}
+
+// 9. Stats Manager — 最近 7 天柱状图 + 汇总
+function getWeekData() {
+  var days = [];
+  var dayLabels = ['日','一','二','三','四','五','六'];
+  for (var i = 6; i >= 0; i--) {
+    var d = new Date();
+    d.setDate(d.getDate() - i);
+    var key = d.toISOString().split('T')[0];
+    var rec = findRecord(key);
+    days.push({
+      date: key,
+      label: i === 0 ? '今天' : dayLabels[d.getDay()],
+      count: rec ? rec.count : 0,
+      isToday: i === 0
+    });
+  }
+  return days;
+}
+
+function renderStats() {
+  var days = getWeekData();
+  var maxCount = Math.max.apply(null, days.map(function(d) { return d.count; }).concat([1]));
+
+  var html = '';
+  for (var i = 0; i < days.length; i++) {
+    var d = days[i];
+    html += '<div class="bar-wrap">';
+    html += '<div class="bar-count">' + d.count + '</div>';
+    html += '<div class="bar' + (d.isToday ? ' today' : '') + '" style="height:' + (d.count / maxCount * 70) + 'px"></div>';
+    html += '<div class="bar-label">' + d.label + '</div></div>';
+  }
+  $statsChart.innerHTML = html;
+
+  var weekTotal = days.reduce(function(sum, d) { return sum + d.count; }, 0);
+  var totalAll = pomodoroRecords.reduce(function(sum, r) { return sum + r.count; }, 0);
+
+  $statToday.textContent = days[days.length - 1].count;
+  $statWeek.textContent = weekTotal;
+  $statTotal.textContent = totalAll;
+}
+
+// 10. UI Renderer — 唯一渲染入口，将所有状态同步到 DOM
+function updateDisplay() {
+  var m = Math.floor(state.remainingSeconds / 60);
+  var s = state.remainingSeconds % 60;
+  $timeDisplay.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+
+  var fraction = 1 - (state.remainingSeconds / totalSeconds());
+  $ringProgress.setAttribute('stroke-dashoffset', RING_CIRCUMFERENCE * fraction);
+
+  var mode = MODES[state.mode];
+  $modeLabel.textContent = mode.label;
+  $modeLabel.className = 'mode-label ' + mode.cls;
+  $ringProgress.className = 'ring-progress ' + mode.cls;
+
+  $ringWrap.classList.toggle('urgent', state.running && state.mode === 'focus' && state.remainingSeconds <= 10);
+
+  updateRoundIndicator();
+}
+
+// 瞬间重置进度环（无过渡动画）
+function updateRingInstant() {
+  $ringProgress.style.transition = 'none';
+  $ringProgress.setAttribute('stroke-dashoffset', '0');
+  $ringProgress.getBoundingClientRect();
+  $ringProgress.style.transition = 'stroke-dashoffset 0.9s linear, stroke 0.4s';
+}
+
+function updateModeTabs() {
+  var tabs = $modeTabs.querySelectorAll('.mode-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    tabs[i].classList.toggle('active', tabs[i].dataset.mode === state.mode);
+  }
+}
+
+// 11. Event Handlers — 用户交互
+$btnStart.addEventListener('click', function() {
+  requestNotification();
+  if (state.running) { pauseTimer(); }
+  else {
+    if (state.remainingSeconds <= 0) { state.remainingSeconds = totalSeconds(); state.elapsedBeforePause = 0; }
+    startTimer();
+  }
+});
+
+$btnReset.addEventListener('click', function() {
+  pauseTimer();
+  state.remainingSeconds = totalSeconds();
+  state.elapsedBeforePause = 0;
+  updateDisplay();
+  updateRingInstant();
+});
+
+$modeTabs.addEventListener('click', function(e) {
+  var tab = e.target.closest('.mode-tab');
+  if (!tab) return;
+  var mode = tab.dataset.mode;
+  if (mode === state.mode) return;
+  pauseTimer();
+  switchMode(mode);
+});
+
+$btnAddTask.addEventListener('click', function() {
+  var val = $taskInput.value.trim();
+  if (!val) return;
+  addTask(val);
+  $taskInput.value = '';
+  $taskInput.focus();
+});
+
+$taskInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') $btnAddTask.click();
+});
+
+// 切回标签页时校准时间（浏览器会节流后台定时器）
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && state.running && state.startedAt) {
+    var elapsed = state.elapsedBeforePause + (Date.now() - state.startedAt) / 1000;
+    state.remainingSeconds = Math.max(0, totalSeconds() - Math.round(elapsed));
+    updateDisplay();
+    if (state.remainingSeconds <= 0) onTimerEnd();
+  }
+});
+
+// 全局键盘快捷键（输入框聚焦时忽略）
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); $btnStart.click(); }
+  else if (e.code === 'KeyR') $btnReset.click();
+});
+
+// Task list event delegation — single listener on parent
+$taskList.addEventListener('click', function(e) {
+  var item = e.target.closest('.task-item');
+  if (!item) return;
+  var id = +item.dataset.id;
+  if (e.target.classList.contains('task-delete')) { e.stopPropagation(); deleteTask(id); }
+  else if (e.target.classList.contains('task-done-btn')) { e.stopPropagation(); toggleTaskDone(id); }
+  else { setActiveTask(id); }
+});
+
+requestNotification();
+renderTasks();
+renderStats();
+updateDisplay();
+updateModeTabs();
+</script>
+</body>
+</html>
