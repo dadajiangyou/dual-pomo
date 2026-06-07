@@ -7,6 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **必须永远使用中文回复。** 所有对话输出、代码注释、commit 信息、README 文档均使用中文。Never use English in responses.
 
+## 输出格式
+
+**每条回复的开头必须带一个 emoji 表情。** 用与内容相关的 emoji，让对话更生动。
+
 ## 项目概览 | Project overview
 
 Dual-Pomo 是一个双形态番茄计时器：终端版（`pomodoro.py`）和网页版（`pomodoro.html`）。
