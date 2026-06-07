@@ -3,6 +3,10 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 此文件为 Claude Code 提供项目上下文，方便后续 AI 理解代码库。
 
+## 语言规则
+
+**必须永远使用中文回复。** 所有对话输出、代码注释、commit 信息、README 文档均使用中文。Never use English in responses.
+
 ## 项目概览 | Project overview
 
 Dual-Pomo 是一个双形态番茄计时器：终端版（`pomodoro.py`）和网页版（`pomodoro.html`）。
