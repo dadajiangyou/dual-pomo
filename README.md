@@ -7,19 +7,19 @@
 </p>
 
 <p align="center">
-  <i>A cross-platform Pomodoro Technique timer. Terminal (Python) + Web (HTML/JS). Zero dependencies. Single file. Ready to run.</i>
+  <i>A three-form Pomodoro timer — Terminal (Python) + Web (HTML/JS) + Desktop (Electron). Cross-platform. Ready to run.</i>
 </p>
 
 <p align="center">
-  <i>跨平台番茄工作法计时工具，终端版 (Python) + Web 版 (HTML/JS)，零依赖，单文件，开箱即用。</i>
+  <i>三形态番茄工作法计时器 — 终端版 (Python) + 网页版 (HTML/JS) + 桌面版 (Electron)。跨平台，开箱即用。</i>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.6+-blue?logo=python" alt="Python">
   <img src="https://img.shields.io/badge/javascript-ES5-yellow?logo=javascript" alt="JavaScript">
   <img src="https://img.shields.io/badge/html-5-orange?logo=html5" alt="HTML5">
+  <img src="https://img.shields.io/badge/electron-33.x-47848f?logo=electron" alt="Electron">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/dependencies-zero-brightgreen" alt="Dependencies">
   <img src="https://img.shields.io/badge/platform-Win%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="Platform">
 </p>
 
@@ -46,14 +46,27 @@
 ### 🌐 Web Edition | Web 版 (`pomodoro.html`)
 
 - Single-file HTML, no build step — 单 HTML 文件，无需构建
-- Dark theme + SVG ring progress — 暗色主题 + SVG 环形进度
-- iOS-style segmented control — iOS 风格分段控制器
+- Soft pink/coral theme + glass-morphism cards + SVG ring glow — 软萌粉色主题 + 玻璃拟态卡片 + SVG 环形光晕
+- Refined typography (Cormorant Garamond + JetBrains Mono via Google Fonts) — 优雅排版
+- Smooth entrance animations + breathing ring effect — 入场动画 + 呼吸光环
 - **Task Manager** — add / complete / delete tasks, each tracks pomodoro count — 任务管理，关联番茄数
 - **Statistics** — 7-day bar chart + today / week / total summary — 7 天柱状图统计
 - **Desktop Notification** — browser push notification — 桌面通知
 - **Audio Cue** — Web Audio API synthesized finish chime — 合成音效
 - **localStorage** persistence — 刷新不丢数据
 - XSS-safe rendering + event delegation — XSS 防护 + 事件委托
+- **Browser & Electron compatible** — 同一文件兼容浏览器和桌面端
+
+### 🖥️ Desktop Edition | 桌面版 (`main.js` + `pomodoro.html`)
+
+- Electron-powered native app — Electron 原生桌面应用
+- **System Tray** — minimize to tray, timer status in tooltip + right-click menu — 系统托盘，右键菜单控制
+- **Global Shortcuts** — `Ctrl+Shift+Space` toggle, `Ctrl+Shift+R` reset, `Ctrl+Shift+D` show/hide — 全局快捷键
+- **Native Notifications** — more reliable than browser notifications — 原生通知，比浏览器通知更可靠
+- **Single Instance Lock** — prevents duplicate app windows — 单实例锁
+- **Auto-launch** — optional start on system boot — 开机启动
+- **Offline Support** — fonts cached after first run — 离线可用
+- Same core engine as Web edition (shared `pomodoro.html`) — 与网页版共用核心
 
 ---
 
@@ -85,29 +98,53 @@ python -m http.server 8080
 # → http://localhost:8080/pomodoro.html
 ```
 
+### Desktop | 桌面
+
+```bash
+npm install          # First time only 首次安装依赖
+npm start            # Run in development 开发运行
+npm run build        # Package for distribution 打包安装程序
+npm run build:win    # Windows only 仅 Windows
+npm run build:mac    # macOS only 仅 macOS
+```
+
+| Shortcut | Action |
+|:---|:---|
+| `Ctrl+Shift+Space` | Start / Pause 开始/暂停 |
+| `Ctrl+Shift+R` | Reset 重置 |
+| `Ctrl+Shift+D` | Show / Hide window 显示/隐藏 |
+| Space / R | In-window shortcuts 窗口内快捷键 |
+
 ---
 
 ## 📁 Project Structure | 项目结构
 
 ```
 dual-pomo/
-├── pomodoro.py          # Terminal edition 终端版
-├── pomodoro.html        # Web edition 网页版
-└── .pomodoro_data.json  # User data (auto-generated) 使用数据（自动生成）
+├── pomodoro.py              # Terminal edition 终端版
+├── pomodoro.html            # Web / Desktop renderer 网页版 & 桌面版渲染进程
+├── main.js                  # Electron main process 桌面版主进程
+├── preload.js               # Electron preload script IPC 桥接
+├── package.json             # Electron dependencies & build config 依赖与打包配置
+├── assets/
+│   └── icon.png             # App icon 应用图标
+├── scripts/
+│   └── generate-icon.js     # Icon generation script 图标生成脚本
+└── .pomodoro_data.json      # User data (auto-generated) 终端版使用数据
 ```
 
 ---
 
 ## 🔧 Tech Stack | 技术栈
 
-| Layer | Terminal 终端版 | Web 网页版 |
-|:---|:---|:---|
-| Language 语言 | Python 3 | HTML5 + CSS3 + JavaScript (ES5) |
-| Dependencies 依赖 | **Zero** (stdlib only) | **Zero** (no framework) |
-| Persistence 持久化 | JSON file | `localStorage` |
-| Platform 平台 | Windows / Linux / macOS | All modern browsers |
-| Audio 音频 | Terminal bell (`\a`) | Web Audio API |
-| Notification 通知 | — | Notifications API |
+| Layer | Terminal 终端版 | Web 网页版 | Desktop 桌面版 |
+|:---|:---|:---|:---|
+| Language 语言 | Python 3 | HTML5 + CSS3 + JS (ES5) | Node.js + HTML5 + CSS3 + JS |
+| Dependencies 依赖 | **Zero** (stdlib only) | **Zero** (no framework) | Electron + electron-builder |
+| Persistence 持久化 | JSON file | `localStorage` | `localStorage` + config file |
+| Platform 平台 | Windows / Linux / macOS | All modern browsers | Windows / macOS / Linux |
+| Audio 音频 | Terminal bell (`\a`) | Web Audio API | Web Audio API |
+| Notification 通知 | — | Notifications API | Native Notification API |
 
 ### Browser Compatibility 浏览器兼容性
 
