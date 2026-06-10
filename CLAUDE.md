@@ -54,3 +54,20 @@ Only the desktop app requires `npm install`. Terminal and web editions are zero-
 ## PWA 移动版
 
 `pomodoro.html` 支持 PWA，Android Chrome 打开后地址栏会出现"安装"按钮，点击即可添加到主屏幕，获得类原生 App 体验（全屏、离线、桌面图标）。iOS Safari 也支持"添加到主屏幕"。
+
+## Android APK 打包
+
+使用 Capacitor 将网页版打包为 Android APK：
+
+```bash
+npm install                          # 安装依赖（含 Capacitor）
+npx cap sync                         # 同步 web 资源到 android/
+cd android && ./gradlew assembleDebug  # 编译 Debug APK（需 JDK 17+）
+# APK 输出位置: android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+或使用 Android Studio：
+```bash
+npx cap open android    # 在 Android Studio 中打开
+# → Build → Build Bundle(s) / APK(s) → Build APK(s)
+```

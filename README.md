@@ -123,6 +123,17 @@ npm run build:mac    # macOS only 仅 macOS
 | `Ctrl+Shift+D` | Show / Hide window 显示/隐藏 |
 | Space / R | In-window shortcuts 窗口内快捷键 |
 
+### Android APK | 安卓
+
+```bash
+npm install                          # 安装依赖
+npx cap sync                         # 同步资源
+cd android && ./gradlew assembleDebug  # 编译 APK（需 JDK 17+）
+# → android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+或打开 Android Studio：`npx cap open android` → Build → Build APK
+
 ---
 
 ## 📁 Project Structure | 项目结构
