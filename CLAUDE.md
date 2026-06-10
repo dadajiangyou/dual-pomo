@@ -47,4 +47,10 @@ Only the desktop app requires `npm install`. Terminal and web editions are zero-
 - **`main.js`** — Electron 主进程。窗口管理（800x600，关闭时隐藏到托盘），系统托盘（右键菜单+Tooltip），单实例锁，原生通知（IPC 桥接），全局快捷键（Ctrl+Shift+Space 开始/暂停、Ctrl+Shift+R 重置、Ctrl+Shift+D 显示/隐藏），应用菜单，开机启动支持。
 - **`preload.js`** — Electron 预加载脚本。通过 `contextBridge` 暴露 `window.electronAPI`：`updateTray()`、`notify()`、`onShortcut()`、`getConfig()`/`setConfig()`、`setAutoLaunch()`/`getAutoLaunch()`。
 - **`package.json`** — Electron 项目配置。electron 33.x + electron-builder 25.x 打包，NSIS (Windows) / DMG (macOS) 安装包，electron-updater 自动更新（GitHub Releases）。
+- **`manifest.json`** — PWA 应用清单。支持 Android Chrome "添加到主屏幕"，全屏独立运行，自定义图标和主题色。
+- **`sw.js`** — Service Worker。预缓存 HTML/CSS/JS/图标 + 运行时缓存，离线可用。首次在线访问后即可断网使用。
 - **数据流** — 三个版本完全独立，不共享数据。All editions are fully independent; they do not share state.
+
+## PWA 移动版
+
+`pomodoro.html` 支持 PWA，Android Chrome 打开后地址栏会出现"安装"按钮，点击即可添加到主屏幕，获得类原生 App 体验（全屏、离线、桌面图标）。iOS Safari 也支持"添加到主屏幕"。

@@ -82,8 +82,13 @@ function makeCRCTable() {
   return table;
 }
 
-// ── 绘制 ──
-const SIZE = 256;
+// ── 运行 ──
+// 用法: node scripts/generate-icon.js [size] [output-name]
+//   node scripts/generate-icon.js              → assets/icon.png (256px)
+//   node scripts/generate-icon.js 192 icon-192 → assets/icon-192.png (192px)
+//   node scripts/generate-icon.js 512 icon-512 → assets/icon-512.png (512px)
+const SIZE = parseInt(process.argv[2]) || 256;
+const OUTNAME = process.argv[3] || 'icon';
 const pixels = Buffer.alloc(SIZE * SIZE * 4, 0);
 const cx = SIZE / 2, cy = SIZE / 2, r = SIZE / 2 - 8;
 
@@ -120,6 +125,6 @@ for (let y = 0; y < SIZE; y++) {
 }
 
 const png = createPNG(SIZE, SIZE, pixels);
-const outPath = path.join(__dirname, '..', 'assets', 'icon.png');
+const outPath = path.join(__dirname, '..', 'assets', OUTNAME + '.png');
 fs.writeFileSync(outPath, png);
-console.log('Icon generated:', outPath);
+console.log('✓ Icon generated: ' + outPath + ' (' + SIZE + 'x' + SIZE + ')');

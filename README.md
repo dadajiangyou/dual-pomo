@@ -56,6 +56,14 @@
 - **localStorage** persistence — 刷新不丢数据
 - XSS-safe rendering + event delegation — XSS 防护 + 事件委托
 - **Browser & Electron compatible** — 同一文件兼容浏览器和桌面端
+- 📱 **PWA Support** — Install to Android home screen, full-screen + offline — 支持添加到手机主屏幕，全屏离线运行
+
+### 📱 Mobile PWA | 移动版 (`manifest.json` + `sw.js`)
+
+- Open `pomodoro.html` in Android Chrome → "Add to Home Screen" → native-like app
+- Android Chrome 打开 → 点击"添加到主屏幕" → 类原生 App 体验
+- Full-screen standalone mode + offline support via Service Worker
+- iOS Safari also supports "Add to Home Screen"
 
 ### 🖥️ Desktop Edition | 桌面版 (`main.js` + `pomodoro.html`)
 
@@ -123,11 +131,15 @@ npm run build:mac    # macOS only 仅 macOS
 dual-pomo/
 ├── pomodoro.py              # Terminal edition 终端版
 ├── pomodoro.html            # Web / Desktop renderer 网页版 & 桌面版渲染进程
+├── manifest.json            # PWA manifest PWA 应用清单
+├── sw.js                    # Service Worker 离线缓存
 ├── main.js                  # Electron main process 桌面版主进程
 ├── preload.js               # Electron preload script IPC 桥接
 ├── package.json             # Electron dependencies & build config 依赖与打包配置
 ├── assets/
-│   └── icon.png             # App icon 应用图标
+│   ├── icon.png             # App icon 桌面图标 (256px)
+│   ├── icon-192.png         # PWA icon PWA 图标 (192px)
+│   └── icon-512.png         # PWA icon PWA 图标 (512px)
 ├── scripts/
 │   └── generate-icon.js     # Icon generation script 图标生成脚本
 └── .pomodoro_data.json      # User data (auto-generated) 终端版使用数据
