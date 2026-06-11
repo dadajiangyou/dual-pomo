@@ -774,13 +774,21 @@ var $modeTabs       = document.getElementById('modeTabs');
 // ── Audio ──
 var audioCtx = null;
 function getAudioCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) {
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch(e) {
+      // WebView 中可能不支持 AudioContext，静默降级
+      return null;
+    }
+  }
   return audioCtx;
 }
 function playBeep(freq, duration, type) {
   type = type || 'sine';
   try {
     var ctx = getAudioCtx();
+    if (!ctx) return;  // WebView 不支持 AudioContext
     var osc = ctx.createOscillator();
     var gain = ctx.createGain();
     osc.type = type;
@@ -804,12 +812,23 @@ function notify(title, body) {
     return;
   }
   // 浏览器环境：使用 Web Notification API
-  if (Notification.permission === 'granted') new Notification(title, { body: body });
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification(title, { body: body });
+    }
+  } catch(e) {
+    // WebView 可能不支持 Notification
+  }
 }
 function requestNotification() {
-  // Electron 环境无需请求权限（自动授予）
   if (window.electronAPI && window.electronAPI.isElectron) return;
-  if (Notification.permission === 'default') Notification.requestPermission();
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  } catch(e) {
+    // WebView 可能不支持 Notification API
+  }
 }
 
 // ── Timer Engine ──
